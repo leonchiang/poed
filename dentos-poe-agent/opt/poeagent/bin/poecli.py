@@ -37,7 +37,6 @@ plat_root_path = pa_root_path + "platforms"
 
 PORTLIST_VALIDATION1 = "^([1-9]{0,1}[0-9]{1})-([1-9]{0,1}[0-9]{1})$"
 PORTLIST_VALIDATION2 = "^([1-9]{0,1}[0-9]{1})$"
-
 class PoeCLI(object):
     TIME_FMT = "%Y/%m/%d %H:%M:%S"
 
@@ -110,7 +109,10 @@ class PoeCLI(object):
             error = "Invalid power limit: '{0}'.".format(data)
             raise argparse.ArgumentTypeError(error)
 
+
+
     def _build_parser(self):
+        # root_parser = poecli_argparser()
         root_parser = argparse.ArgumentParser()
         root_sub_parser = root_parser.add_subparsers(dest="subcmd",
                                                      help="Descriptions",
@@ -505,79 +507,85 @@ def main(argv):
         os._exit(-8)
 
     parser = poecli._build_parser()
-    args = parser.parse_args()
+    args=None
+    try:
+        args = parser.parse_args()
+    except Exception as e:
+        pass
+
     cfg_action=""
     set_flag = False
     poed_alive = poecli.is_poed_alive()
-    if args.subcmd == "show":
-        if (args.ports is None and args.system is False and \
-                args.all is False and args.mask is False and args.version is False and args.status2 is False):
-            parser.error("No action requested for %s command" % args.subcmd)
+    if args is not None:
+        if args.subcmd == "show":
+            if (args.ports is None and args.system is False and \
+                    args.all is False and args.mask is False and args.version is False and args.status2 is False):
+                parser.error("No action requested for %s command" % args.subcmd)
 
-        debug_flag = args.debug
-        json_flag = args.json
-        if args.ports:
-            poecli.show_ports_information(args.ports, debug_flag, json_flag)
-        elif args.system:
-            poecli.show_system_information(debug_flag, json_flag)
-        elif args.mask:
-            poecli.show_individual_masks(json_flag)
-        elif args.all:
-            poecli.show_all_information(debug_flag, json_flag)
-        elif args.version:
-            poecli.show_versions(json_flag)
-        elif args.status2:
-            poecli.show_system_status2(json_flag)
-    elif args.subcmd == "set":
-        if (args.enable is None and args.level is None and args.powerLimit is None):
-            parser.error("No action requested for %s command" % args.subcmd)
-        if args.enable is not None:
-            set_flag |= poecli.set_ports_enDis(args.ports, args.enable)
-        if args.level is not None:
-            set_flag |= poecli.set_ports_priority(args.ports, args.level)
-        if args.powerLimit is not None:
-            set_flag |= poecli.set_ports_powerLimit(args.ports, args.powerLimit)
+            debug_flag = args.debug
+            json_flag = args.json
+            if args.ports:
+                poecli.show_ports_information(args.ports, debug_flag, json_flag)
+            elif args.system:
+                poecli.show_system_information(debug_flag, json_flag)
+            elif args.mask:
+                poecli.show_individual_masks(json_flag)
+            elif args.all:
+                poecli.show_all_information(debug_flag, json_flag)
+            elif args.version:
+                poecli.show_versions(json_flag)
+            elif args.status2:
+                poecli.show_system_status2(json_flag)
+        elif args.subcmd == "set":
+            if (args.enable is None and args.level is None and args.powerLimit is None):
+                parser.error("No action requested for %s command" % args.subcmd)
+            if args.enable is not None:
+                set_flag |= poecli.set_ports_enDis(args.ports, args.enable)
+            if args.level is not None:
+                set_flag |= poecli.set_ports_priority(args.ports, args.level)
+            if args.powerLimit is not None:
+                set_flag |= poecli.set_ports_powerLimit(args.ports, args.powerLimit)
 
-    elif args.subcmd == "savechip":
-        poecli.save_system_settings()
-        set_flag = True
-    elif args.subcmd == "restore_poe_system":
-        poecli.restore_factory_default()
-    elif args.subcmd == "resetchip":
-        poecli.reset_poe_chip()
-        if poed_alive:
-            cfg_action += POECLI_CFG+","
-            cfg_action += POED_LOAD_ACTION+","
-            cfg_action = "".join(cfg_action.rsplit(",", 1))
-            print("reset_reload_action: {0}".format(cfg_action))
-
-    elif args.subcmd == "init_platform":
-        poecli.init_poe_plat()
-
-    elif args.subcmd == "get_active_matrix":
-        poecli.get_active_matrix()
-    elif args.subcmd == "reload_all":
-        poecli.init_poe_plat()
-        if poed_alive:
-            cfg_action += POECLI_CFG+","
-            cfg_action += POED_LOAD_ACTION+","
-            cfg_action = "".join(cfg_action.rsplit(",", 1))
-            print("reload_action: {0}".format(cfg_action))
-    elif args.subcmd == "cfg":
-        if poed_alive:
-            cfg_action += POECLI_CFG+","
-            if args.save:
-                cfg_action += POED_SAVE_ACTION+","
-                if args.config is not None:
-                    cfg_action += args.config+","
-            elif args.load:
+        elif args.subcmd == "savechip":
+            poecli.save_system_settings()
+            set_flag = True
+        elif args.subcmd == "restore_poe_system":
+            poecli.restore_factory_default()
+        elif args.subcmd == "resetchip":
+            poecli.reset_poe_chip()
+            if poed_alive:
+                cfg_action += POECLI_CFG+","
                 cfg_action += POED_LOAD_ACTION+","
-                if args.config is not None:
-                    cfg_action += args.config+","
-            cfg_action = "".join(cfg_action.rsplit(",", 1))
-            print("cfg_action: {0}".format(cfg_action))
-        else:
-            print("Poe Agent not started, cfg operation will be ignore.")
+                cfg_action = "".join(cfg_action.rsplit(",", 1))
+                print("reset_reload_action: {0}".format(cfg_action))
+
+        elif args.subcmd == "init_platform":
+            poecli.init_poe_plat()
+
+        elif args.subcmd == "get_active_matrix":
+            poecli.get_active_matrix()
+        elif args.subcmd == "reload_all":
+            poecli.init_poe_plat()
+            if poed_alive:
+                cfg_action += POECLI_CFG+","
+                cfg_action += POED_LOAD_ACTION+","
+                cfg_action = "".join(cfg_action.rsplit(",", 1))
+                print("reload_action: {0}".format(cfg_action))
+        elif args.subcmd == "cfg":
+            if poed_alive:
+                cfg_action += POECLI_CFG+","
+                if args.save:
+                    cfg_action += POED_SAVE_ACTION+","
+                    if args.config is not None:
+                        cfg_action += args.config+","
+                elif args.load:
+                    cfg_action += POED_LOAD_ACTION+","
+                    if args.config is not None:
+                        cfg_action += args.config+","
+                cfg_action = "".join(cfg_action.rsplit(",", 1))
+                print("cfg_action: {0}".format(cfg_action))
+            else:
+                print("Poe Agent not started, cfg operation will be ignore.")
 
     if set_flag == True and poed_alive == True:
         poecli.send_ipc_event()
@@ -585,8 +593,5 @@ def main(argv):
         poecli.send_ipc_event(cfg_action)
 
 if __name__ == '__main__':
-    try:
-        main(sys.argv)
-    finally:
-        exit(0)
+    main(sys.argv)
 
