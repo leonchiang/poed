@@ -117,6 +117,8 @@ POED_BUSY_FLAG = "/run/.poed_busy"
 POED_EXIT_FLAG = "/run/.poed_exit"
 FILEFLAG_RETRY = 5
 
+def print_stderr(msg):
+    sys.stderr.write(msg+"\n")
 class PoeLog(object):
     def __init__(self, debug_mode=False):
         self.debug_mode = debug_mode
@@ -148,7 +150,7 @@ class PoeLog(object):
     def _record(self, priority, msg):
         syslog.syslog(priority, msg)
         if self.debug_mode == True:
-            print(msg)
+            sys.stdout.write(msg+"\n")
 
 def PoeAccessExclusiveLock(func):
     def wrap_cmd(*args, **kwargs):
@@ -162,28 +164,28 @@ def PoeAccessExclusiveLock(func):
         while retry > 0:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX)
-                print("[{0}]Locked, retry: {1}".format(
+                print_stderr("[{0}]Locked, retry: {1}".format(
                     func.__name__, str(retry)))
                 LOCKED = True
                 break
             except Exception as e:
                 # pass
                 retry = retry-1
-                print("[{0}]Retry locking, retry: {1}, Exception: {2}".format(
+                print_stderr("[{0}]Retry locking, retry: {1}, Exception: {2}".format(
                     func.__name__, str(retry),str(e)))
                 time.sleep(0.1)
                 if retry == 0:
                     return res
         if LOCKED:
             try:
-                print("[{0}]Locked execution code".format(
+                print_stderr("[{0}]Locked execution code".format(
                     func.__name__))
                 res = func(*args, **kwargs)
             except Exception as e:
-                print("[{0}]Locked but execution failed: {1}".format(
+                print_stderr("[{0}]Locked but execution failed: {1}".format(
                     func.__name__, str(e)))
             finally:
-                print("[{0}]Unlock file".format(
+                print_stderr("[{0}]Unlock file".format(
                     func.__name__))
                 fcntl.flock(fd, fcntl.LOCK_UN)
         return res
@@ -194,7 +196,7 @@ def touch_file(file_path):
     try:
         return Path(file_path).touch()
     except Exception as e:
-        print("Fail to touch: "+file_path+",err: "+str(e))
+        print_stderr("Fail to touch: "+file_path+",err: "+str(e))
         return False
 
 
@@ -205,7 +207,7 @@ def remove_file(file_path):
         else:
             return True
     except Exception as e:
-        print("Fail to remove: "+file_path+",err: "+str(e))
+        print_stderr("Fail to remove: "+file_path+",err: "+str(e))
         return False
 
 
@@ -213,7 +215,7 @@ def check_file(file_path):
     try:
         return Path(file_path).exists()
     except Exception as e:
-        print("Fail to check: "+file_path+",err: "+str(e))
+        print_stderr("Fail to check: "+file_path+",err: "+str(e))
         return False
 
 
@@ -221,11 +223,11 @@ def wait_poed_busy(timeout=FILEFLAG_RETRY):
     ret = check_file(POED_BUSY_FLAG)
     while ret == True:
         ret = check_file(POED_BUSY_FLAG)
-        print("\rpoe agent busy...")
+        print_stderr("\rpoe agent busy...")
         if timeout > 0:
             timeout -= 1
         else:
-            print("\r\rpoe agent busy...timeout")
+            print_stderr("\r\rpoe agent busy...timeout")
             return False
         time.sleep(1)
     return True

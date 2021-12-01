@@ -51,7 +51,7 @@ class PoeCLI(object):
                 d = dict(i.split('=') for i in f.read().split(' '))
                 return d.get("onl_platform").rstrip()
         except Exception as e:
-            print("Failed to get model name from %s. err: %s" % (bootcmd_path, str(e)))
+            print_stderr("Failed to get model name from %s. err: %s" % (bootcmd_path, str(e)))
             return "Unknown"
 
     def platform_src_path(self):
@@ -61,7 +61,7 @@ class PoeCLI(object):
             return "/".join([plat_root_path, manufacturer,
                              model_revision, "poe_platform.py"])
         except Exception as e:
-            print("Failed to get platform path. err: %s" % str(e))
+            print_stderr("Failed to get platform path. err: %s" % str(e))
 
     def load_poe_platform(self):
         plat_src = imp.load_source("poe_plat", self.platform_src_path())
@@ -314,7 +314,7 @@ class PoeCLI(object):
             else:
                 self.print_poe_version(data[VERSIONS])
         except Exception as e:
-            print("Failed to show poe versions! (%s)" % str(e))
+            print_stderr("Failed to show poe versions! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def show_system_information(self, debug, json):
@@ -326,7 +326,8 @@ class PoeCLI(object):
             else:
                 self.print_system_information(data[SYS_INFO], debug)
         except Exception as e:
-            print("Failed to show poe system information! (%s)" % str(e))
+            print_stderr(
+                "Failed to show poe system information! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def show_system_status2(self, debug=True, json=True):
@@ -344,7 +345,8 @@ class PoeCLI(object):
             else:
                 self.print_ports_information(data[PORT_INFO], debug)
         except Exception as e:
-            print("Failed to show poe ports information! (%s)" % str(e))
+            print_stderr(
+                "Failed to show poe ports information! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def show_individual_masks(self, json):
@@ -356,7 +358,7 @@ class PoeCLI(object):
             else:
                 self.print_indv_masks(data[INDV_MASKS])
         except Exception as e:
-            print("Failed to show individual masks! (%s)" % str(e))
+            print_stderr("Failed to show individual masks! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def show_all_information(self, debug, json):
@@ -375,7 +377,7 @@ class PoeCLI(object):
                 self.print_ports_information(data[PORT_INFO], debug)
                 self.print_indv_masks(data[INDV_MASKS])
         except Exception as e:
-            print("Failed to show all information! (%s)" % str(e))
+            print_stderr("Failed to show all information! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def set_ports_enDis(self, portList, val):
@@ -385,7 +387,8 @@ class PoeCLI(object):
                 poe_port.set_enDis(val)
             return True
         except Exception as e:
-            print("Failed to set ports enable/disable! (%s)" % str(e))
+            print_stderr(
+                "Failed to set ports enable/disable! (%s)" % str(e))
         return False
 
     @PoeAccessExclusiveLock
@@ -396,7 +399,7 @@ class PoeCLI(object):
                 poe_port.set_powerLimit(val)
             return True
         except Exception as e:
-            print("Failed to set ports power limit! (%s)" % str(e))
+            print_stderr("Failed to set ports power limit! (%s)" % str(e))
         return False
 
     @PoeAccessExclusiveLock
@@ -407,7 +410,7 @@ class PoeCLI(object):
                 poe_port.set_priority(val)
             return True
         except Exception as e:
-            print("Failed to set ports priority! (%s)" % str(e))
+            print_stderr("Failed to set ports priority! (%s)" % str(e))
         return False
 
     @PoeAccessExclusiveLock
@@ -415,7 +418,8 @@ class PoeCLI(object):
         try:
             self.poe_plat.save_system_settings()
         except Exception as e:
-            print("Failed to save poe system settings! (%s)" % str(e))
+            print_stderr(
+                "Failed to save poe system settings! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def restore_factory_default(self):
@@ -425,7 +429,8 @@ class PoeCLI(object):
             self.json_output(result)
             print("Success to restore factory default and take platform poe settings!")
         except Exception as e:
-            print("Failed to restore factory default! (%s)" % str(e))
+            print_stderr(
+                "Failed to restore factory default! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def init_poe_plat(self):
@@ -434,7 +439,7 @@ class PoeCLI(object):
             self.json_output(result)
             print("Success to initialize platform!")
         except Exception as e:
-            print("Failed to initialize platform! (%s)" % str(e))
+            print_stderr("Failed to initialize platform! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def get_active_matrix(self):
@@ -475,7 +480,7 @@ class PoeCLI(object):
             # self.json_output(data)
             print("Success to reset poe chip and take platform poe settings!")
         except Exception as e:
-            print("Failed to reset poe chip! (%s)" % str(e))
+            print_stderr("Failed to reset poe chip! (%s)" % str(e))
 
     def get_current_time(self):
         return datetime.now().strftime(self.TIME_FMT)
@@ -500,7 +505,8 @@ def main(argv):
     try:
         poecli = PoeCLI()
     except Exception as e:
-        raise RuntimeError("Failed to load poe platform! (%s)" % str(e))
+        print_stderr("Failed to load poe platform! (%s)" % str(e))
+        os._exit(-9)
 
     if wait_poed_busy() == False:
         # POED is busy within 5s, BusyID=248
@@ -513,10 +519,10 @@ def main(argv):
     except Exception as e:
         pass
 
-    cfg_action=""
-    set_flag = False
-    poed_alive = poecli.is_poed_alive()
     if args is not None:
+        cfg_action = ""
+        set_flag = False
+        poed_alive = poecli.is_poed_alive()
         if args.subcmd == "show":
             if (args.ports is None and args.system is False and \
                     args.all is False and args.mask is False and args.version is False and args.status2 is False):
