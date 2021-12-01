@@ -51,7 +51,6 @@ class PoeDriver_microsemi_pd69200(object):
         # Wake up time delay after reset poe chip command: 300ms
         self._reset_poe_chip_delay = 0.3
 
-
     def _calc_msg_echo(self):
         self._echo += 1
         if (self._echo == 0xff):
@@ -119,16 +118,24 @@ class PoeDriver_microsemi_pd69200(object):
     @PoeCommExclusiveLock()
     def _communicate(self, tx_msg, delay):
         retry = 0
+        if delay == self._msg_delay:
+            i2c_delay=delay*0.8
+            i2c_delay_step=delay*0.5
+        else:
+            i2c_delay=delay
         while retry < POE_PD69200_COMM_RETRY_TIMES:
             try:
-                self._xmit(tx_msg, delay)
+                self._xmit(tx_msg, i2c_delay)
                 if retry>0:
                     print("Send(retry): {0}".format(conv_byte_to_hex(tx_msg)))
                 rx_msg = self._recv()
                 self._check_rx_msg(rx_msg, tx_msg)
                 return rx_msg
             except Exception as e:
+                i2c_delay += i2c_delay_step
                 print("_communicate error: {0}".format(str(e)))
+                print("_communicate incremented_msg_delay: {0}".format(
+                    str(i2c_delay)))
                 print("Send: {0}".format(conv_byte_to_hex(tx_msg)))
                 print("Recv: {0}".format(conv_byte_to_hex(rx_msg)))
                 rx_msg = self._recv()
@@ -158,7 +165,8 @@ class PoeDriver_microsemi_pd69200(object):
                    POE_PD69200_MSG_SUB1_RESET,
                    0x00,
                    POE_PD69200_MSG_SUB1_RESET]
-        self._run_communication_protocol(command, self._reset_poe_chip_delay)
+        return self._run_communication_protocol(command, self._msg_delay,
+                                         PoeMsgParser.MSG_CMD_STATUS)
 
     def restore_factory_default(self):
         command = [POE_PD69200_MSG_KEY_PROGRAM,
@@ -196,6 +204,15 @@ class PoeDriver_microsemi_pd69200(object):
                    POE_PD69200_MSG_SUB1_SYSTEM_STATUS]
         return self._run_communication_protocol(command, self._msg_delay,
                                                 PoeMsgParser.MSG_SYSTEM_STATUS)
+
+
+    def get_system_status2(self):
+        command = [POE_PD69200_MSG_KEY_REQUEST,
+                   self._calc_msg_echo(),
+                   POE_PD69200_MSG_SUB_GLOBAL,
+                   POE_PD69200_MSG_SUB1_SYSTEM_STATUS2]
+        return self._run_communication_protocol(command, self._msg_delay,
+                                                PoeMsgParser.MSG_SYSTEM_STATUS2)
 
     def get_bt_system_status(self):
         command = [POE_PD69200_MSG_KEY_REQUEST,
@@ -269,7 +286,8 @@ class PoeDriver_microsemi_pd69200(object):
                    self._calc_msg_echo(),
                    POE_PD69200_MSG_SUB_GLOBAL,
                    POE_PD69200_MSG_SUB1_TEMP_MATRIX]
-        self._run_communication_protocol(command, self._msg_delay)
+        return self._run_communication_protocol(command, self._msg_delay,
+                                                PoeMsgParser.MSG_CMD_STATUS)
 
     def get_active_matrix(self, logic_port):
         command = [POE_PD69200_MSG_KEY_REQUEST,
@@ -277,7 +295,8 @@ class PoeDriver_microsemi_pd69200(object):
                    POE_PD69200_MSG_SUB_CHANNEL,
                    POE_PD69200_MSG_SUB1_CH_MATRIX,
                    logic_port]
-        return self._run_communication_protocol(command, self._msg_delay)
+        return self._run_communication_protocol(command, self._msg_delay,
+                                                PoeMsgParser.MSG_ACTIVE_MATRIX)
 
     def set_port_enDis(self, logic_port, EnDis):
         command = [POE_PD69200_MSG_KEY_COMMAND,
@@ -487,6 +506,9 @@ class PoeDriver_microsemi_pd69200(object):
     def get_system_information(self, more_info=True):
         return poeSystem(self).get_current_status(more_info)
 
+    def get_system_2nd_status(self, more_info=True):
+        return poeSystem(self).get_current_status2(more_info)
+
     def get_bt_port_parameters(self, logic_port):
         command = [POE_PD69200_MSG_KEY_REQUEST,
                    self._calc_msg_echo(),
@@ -534,6 +556,9 @@ class PoeMsgParser(object):
     MSG_BT_PORT_PARAMETERS = 13
     MSG_BT_SYSTEM_STATUS = 14
     MSG_BT_PORT_CLASS = 15
+    MSG_SYSTEM_STATUS2 = 16
+    MSG_ACTIVE_MATRIX = 17
+    MSG_CMD_STATUS = 255
 
     def _to_word(self, byteH, byteL):
         return (byteH << 8 | byteL) & 0xffff
@@ -642,6 +667,17 @@ class PoeMsgParser(object):
         }
         return parsed_data
 
+    def _parse_system_status2(self, msg):
+        parsed_data = {
+            SRS: msg[POE_PD69200_MSG_OFFSET_SUB],
+            GIE1: msg[POE_PD69200_MSG_OFFSET_SUB1],
+            RST_INFO: msg[POE_PD69200_MSG_OFFSET_SUB2],
+            GIE3: msg[POE_PD69200_MSG_OFFSET_DATA5],
+            DB_RECOVERY: msg[POE_PD69200_MSG_OFFSET_DATA6],
+            SAVE_COUNTER: msg[POE_PD69200_MSG_OFFSET_DATA10],
+        }
+        return parsed_data
+
     def _parse_bt_system_status(self, msg):
         parsed_data = {
             CPU_STATUS2: msg[POE_PD69200_MSG_OFFSET_SUB1],
@@ -693,6 +729,20 @@ class PoeMsgParser(object):
         }
         return parsed_data
 
+    def _parse_cmd_status(self, msg):
+        parsed_data = {
+            CMD_EXECUTE_RESULT: conv_byte_to_hex([msg[POE_PD69200_MSG_OFFSET_SUB], msg[POE_PD69200_MSG_OFFSET_SUB1]]),
+        }
+        return parsed_data
+
+    def _parse_active_matrix(self, msg):
+        parsed_data = {
+            ACTIVE_MATRIX_PHYA: msg[POE_PD69200_MSG_OFFSET_SUB],
+            ACTIVE_MATRIX_PHYB: msg[POE_PD69200_MSG_OFFSET_SUB1],
+
+        }
+        return parsed_data
+
     def parse(self, msg, msg_type):
         if msg_type == self.MSG_PORT_POWER_LIMIT:
             return self._parse_port_power_limit(msg)
@@ -706,6 +756,8 @@ class PoeMsgParser(object):
             return self._parse_port_measurements(msg)
         elif msg_type == self.MSG_SYSTEM_STATUS:
             return self._parse_system_status(msg)
+        elif msg_type == self.MSG_SYSTEM_STATUS2:
+            return self._parse_system_status2(msg)
         elif msg_type == self.MSG_ALL_PORTS_ENDIS:
             return self._parse_all_ports_endis(msg)
         elif msg_type == self.MSG_POE_DEVICE_STATUS:
@@ -724,6 +776,10 @@ class PoeMsgParser(object):
             return self._parse_bt_system_status(msg)
         elif msg_type == self.MSG_BT_PORT_MEASUREMENTS:
             return self._parse_bt_port_measurements(msg)
+        elif msg_type == self.MSG_ACTIVE_MATRIX:
+            return self._parse_active_matrix(msg)
+        elif msg_type == self.MSG_CMD_STATUS:
+            return self._parse_cmd_status(msg)
         return {}
 
 class poePort(object):
@@ -915,6 +971,12 @@ class poeSystem(object):
         self.nvm_user_byte = 0
         self.found_device = 0
         self.event_exist = 0
+        self.srs          = 0
+        self.gie1         = 0
+        self.rst_info     = 0
+        self.gie3         = 0
+        self.db_recovery  = 0
+        self.save_counter = 0
         self._4wire_bt = self.poe_plat._4wire_bt
 
     def update_system_status(self):
@@ -953,6 +1015,15 @@ class poeSystem(object):
             self.pm2 = pm_method.get(PM2)
             self.pm3 = pm_method.get(PM3)
 
+    def update_system_status2(self):
+        system_status2 = self.poe_plat.get_system_status2()
+        self.srs            = system_status2.get(SRS)
+        self.gie1           = system_status2.get(GIE1)
+        self.rst_info       = system_status2.get(RST_INFO)
+        self.gie3           = system_status2.get(GIE3)
+        self.db_recovery    = system_status2.get(DB_RECOVERY)
+        self.save_counter   = system_status2.get(SAVE_COUNTER)
+
     def get_current_status(self, more_info=True):
         self.update_system_status()
         system_status = OrderedDict()
@@ -984,3 +1055,14 @@ class poeSystem(object):
             system_status[FOUND_DEVICE] = self.found_device
             system_status[EVENT_EXIST] = self.event_exist
         return system_status
+
+    def get_current_status2(self, more_info=True):
+        self.update_system_status2()
+        system_status2 = OrderedDict()
+        system_status2[SRS]=self.srs
+        system_status2[GIE1]=self.gie1
+        system_status2[RST_INFO]=self.rst_info
+        system_status2[GIE3]=self.gie3
+        system_status2[DB_RECOVERY]=self.db_recovery
+        system_status2[SAVE_COUNTER]=self.save_counter
+        return system_status2

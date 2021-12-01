@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 '''
 from poe_driver_pd69200_def import *
+from poe_driver_pd69200 import *
 from poe_common import *
 from smbus2 import SMBus, i2c_msg
 
@@ -29,6 +30,7 @@ def get_poe_platform():
 class PoePlatform_delta_tn48m_poe(PoeDrv.PoeDriver_microsemi_pd69200):
     def __init__(self):
         PoeDrv.PoeDriver_microsemi_pd69200.__init__(self)
+        self.PoeMsgParser = PoeMsgParser()
         self.log = PoeLog()
         self._total_poe_port = 48
         self._i2c_bus = 1
@@ -97,15 +99,31 @@ class PoePlatform_delta_tn48m_poe(PoeDrv.PoeDriver_microsemi_pd69200):
     def bus_unlock(self):
         fcntl.flock(self._bus().fd, fcntl.LOCK_UN)
 
-    def init_poe(self):
-        # Set Temporary Matrix
-        for (logic_port, phy_port) in self._default_matrix:
-            self.set_temp_matrix(logic_port, phy_port)
-        self.program_active_matrix()
+    def get_platform_matrix(self):
+        return self._default_matrix
 
-        # Disable all ports first
-        for port_id in range(self.total_poe_port()):
-            self.set_port_enDis(port_id, 0)
+    def fast_matrix_compare(self):
+        result = []
+        for idx in range(self.total_poe_port()):
+            get_phya = self.get_active_matrix(idx)[ACTIVE_MATRIX_PHYA]
+            result.append(
+                (idx, get_phya))
+        for portmap in (self.get_platform_matrix()):
+            if portmap[1] != result[portmap[0]][1]:
+                self.log.info("Port map mismatch, run program global matrix")
+                return False
+        self.log.info("Port map match, skip program global matrix")
+        return True
+
+    def init_poe(self):
+        check_matrix = self.fast_matrix_compare()
+        if check_matrix == False:
+            # Disable all ports first
+            for port_id in range(self.total_poe_port()):
+                self.set_port_enDis(port_id, 0)
+            # Set Temporary Matrix
+            for (logic_port, phy_port) in self._default_matrix:
+                self.set_temp_matrix(logic_port, phy_port)
 
         # Set Power Bank
         for (bank, power_limit) in self._default_power_banks:
@@ -119,7 +137,11 @@ class PoePlatform_delta_tn48m_poe(PoeDrv.PoeDriver_microsemi_pd69200):
         self.set_pm_method(POE_PD69200_MSG_DATA_PM1_DYNAMIC,
                            POE_PD69200_MSG_DATA_PM2_PPL,
                            POE_PD69200_MSG_DATA_PM3_NO_COND)
-
+        if check_matrix == False:
+            result = self.program_active_matrix()
+        else:
+            result = dict({})
+        return result
 
     def bank_to_psu_str(self, bank):
         powerSrc = "None"
