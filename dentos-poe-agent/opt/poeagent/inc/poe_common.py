@@ -80,6 +80,17 @@ LAST_SAVE_TIME = "file_save_time"
 LAST_SET_TIME  = "last_poe_set_time"
 OPERATION_MODE = "operation_mode"
 MEASURED_CLASS = "measured_class"
+SRS            = "SRS"
+GIE1           = "GIE1"
+RST_INFO       = "RST_INFO"
+GIE3           = "GIE3"
+DB_RECOVERY    = "DB_RECOVERY"
+SAVE_COUNTER   = "SAVE_COUNTER"
+SYSTEM_STATUS2 = "SYSTEM_STATUS2"
+CMD_EXECUTE_RESULT = "CMD_EXECUTE_RESULT"
+ACTIVE_MATRIX_PHYA = "ACTIVE_MATRIX_A"
+ACTIVE_MATRIX_PHYB = "ACTIVE_MATRIX_B"
+
 
 # IPC EVENT
 POE_IPC_EVT    = "/run/poe_ipc_event"
@@ -174,6 +185,8 @@ def PoeAccessExclusiveLock(func):
                 print_stderr("[{0}]Locked but execution failed: {1}".format(
                     func.__name__, str(e)))
             finally:
+                print_stderr("[{0}]Unlock file".format(
+                    func.__name__))
                 fcntl.flock(fd, fcntl.LOCK_UN)
         return res
     return wrap_cmd

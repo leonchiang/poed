@@ -31,13 +31,14 @@ import json
 import fcntl
 import binascii
 
-bootcmd_path   = "/proc/cmdline"
-pa_root_path   = os.getcwd() + "/../"
+bootcmd_path = "/proc/cmdline"
+pa_root_path = os.getcwd() + "/../"
 plat_root_path = pa_root_path + "platforms"
 
-TIME_FMT       = "%Y/%m/%d %H:%M:%S"
+TIME_FMT = "%Y/%m/%d %H:%M:%S"
 
-thread_flag    = True
+thread_flag = True
+
 
 class PoeAgentState(object):
     CLEAN_START = 0
@@ -77,12 +78,12 @@ class PoeConfig(object):
 
     def is_valid_gen_info(self, gen_info):
         return self.is_valid_cfg_platform(gen_info[PLATFORM]) and \
-               self.is_valid_poe_agt_ver(gen_info[POE_AGT_VER]) and \
-               self.is_valid_poe_cfg_ver(gen_info[POE_CFG_VER])
+            self.is_valid_poe_agt_ver(gen_info[POE_AGT_VER]) and \
+            self.is_valid_poe_cfg_ver(gen_info[POE_CFG_VER])
 
     def is_increasing_time_sequence(self, t1, t2):
         tDelta = datetime.strptime(t2, TIME_FMT) - \
-                 datetime.strptime(t1, TIME_FMT)
+            datetime.strptime(t1, TIME_FMT)
         return (tDelta.days > 0 or tDelta.seconds > 0) and \
                (tDelta.days * tDelta.seconds) >= 0
 
@@ -93,13 +94,13 @@ class PoeConfig(object):
 
     def is_valid_data(self, data):
         return self.is_valid_gen_info(data[GEN_INFO]) and \
-               self.is_valid_timestamp(data[TIMESTAMP])
+            self.is_valid_timestamp(data[TIMESTAMP])
 
     def is_valid(self):
         return self.is_exist() and self.is_valid_data(self.load())
 
     def save(self, data):
-        json_data = json.dumps(data, indent = 4)
+        json_data = json.dumps(data, indent=4)
         with open(self.path(), 'w') as f:
             f.write(json_data)
             return True
@@ -137,6 +138,8 @@ class PoeAgent(object):
         self.cfg_update_intvl_rt = 4
         self.cfg_update_intvl_perm = 30
         self.cfg_load_retry = 3
+        self.rt_counter = 0
+        self.fail_counter = 0
         self.autosave_intvl = 1
         self.autosave_thread = threading.Thread(target=self.autosave_main)
 
@@ -214,7 +217,8 @@ class PoeAgent(object):
     @PoeAccessExclusiveLock
     def apply_platform_defaults(self):
         try:
-            self.poe_plat.init_poe()
+            result=self.poe_plat.init_poe()
+            self.log.info(str(result))
             self.update_set_time()
             return True
         except Exception as e:
@@ -272,31 +276,31 @@ class PoeAgent(object):
             self.log.err("An exception to save poe cfg: %s" % str(e))
         return False
 
-
     def save_curerent_runtime(self):
-        if self.runtime_cfg.is_valid():
+        cfg_data = self.collect_running_state()
+        if self.save_poe_cfg(self.runtime_cfg, cfg_data) == True:
             copyfile(self.runtime_cfg.path(),
                      self.permanent_cfg.path())
 
     def autosave_main(self):
         global thread_flag
-        rt_counter = 0
-        fail_counter = 0
+        self.rt_counter = 0
+        self.fail_counter = 0
         while thread_flag is True:
             try:
-                if rt_counter >= self.cfg_update_intvl_rt:
+                if self.rt_counter >= self.cfg_update_intvl_rt:
                     cfg_data = self.collect_running_state()
                     if self.save_poe_cfg(self.runtime_cfg, cfg_data) == True:
-                        rt_counter = 0
+                        self.rt_counter = 0
                     else:
                         self.log.warn(
                             "Failed to save cfg data in autosave routine!")
-                rt_counter += self.autosave_intvl
+                self.rt_counter += self.autosave_intvl
                 time.sleep(self.autosave_intvl)
             except Exception as e:
-                fail_counter += 1
+                self.fail_counter += 1
                 self.log.err("An exception in autosave routine: %s, cnt: %d" %
-                             (str(e), fail_counter))
+                             (str(e), self.fail_counter))
                 time.sleep(1)
 
     @PoeAccessExclusiveLock
@@ -331,7 +335,7 @@ class PoeAgent(object):
     def set_poe_agent_state(self, val):
         if val != PoeAgentState.UNCLEAN_START and \
            val != PoeAgentState.CLEAN_START:
-           self.log.warn("Invalid poe agent state: %d, skipped!" % val)
+            self.log.warn("Invalid poe agent state: %d, skipped!" % val)
         else:
             self.poe_agent_state = val
 
@@ -389,9 +393,11 @@ def main(argv):
         pa.log.info("Configure PoE ports from \"%s\"" % poe_cfg.path())
         touch_file(POED_BUSY_FLAG)
         if pa.load_poe_cfg(poe_cfg) == True:
-            pa.log.info("Success to restore port configurations from \"%s\"." % poe_cfg.path())
+            pa.log.info(
+                "Success to restore port configurations from \"%s\"." % poe_cfg.path())
         else:
-            pa.log.warn("Failed to restore port configurations from \"%s\"." % poe_cfg.path())
+            pa.log.warn(
+                "Failed to restore port configurations from \"%s\"." % poe_cfg.path())
             if Path(pa.permanent_cfg.path()).exists() == False:
                 pa.log.info(
                     "Presistant config file loss, reconstruct \"%s\" config from poe chip runtime setting." % poe_cfg.path())
@@ -404,7 +410,6 @@ def main(argv):
 
         pa.autosave_thread.start()
 
-
         remove_file(POED_BUSY_FLAG)
         pa.create_poe_set_ipc()
         while thread_flag is True:
@@ -415,11 +420,16 @@ def main(argv):
                         if data == POECLI_SET:
                             pa.update_set_time()
                             pa.log.info("Receive a set event from poecli!")
+
+                            if pa.rt_counter <pa.cfg_update_intvl_rt:
+                                pa.log.info("Reset rt_counter timing: {0}".format(
+                                    str(pa.cfg_update_intvl_rt)))
+                                pa.rt_counter = pa.cfg_update_intvl_rt-1
                             break
                         elif data == POECLI_CFG:
                             pa.log.info("Receive a cfg event from poecli!")
-                            action=""
-                            apply=""
+                            action = ""
+                            apply = ""
                             file = None
                             if len(data_list) > 1:
                                 action = data_list[1]
@@ -429,8 +439,9 @@ def main(argv):
                                     pa.log.info("CFG File: {0}".format(file))
                                     if len(data_list) > 3:
                                         apply = data_list[3]
-                                        pa.log.info("CFG Apply: {0}".format(apply))
-                                if action==POED_SAVE_ACTION:
+                                        pa.log.info(
+                                            "CFG Apply: {0}".format(apply))
+                                if action == POED_SAVE_ACTION:
                                     if file == None:
                                         pa.log.info(
                                             "CFG Save: Save runtime setting to persistent file")
@@ -440,25 +451,23 @@ def main(argv):
                                                  file)
                                         pa.log.info(
                                             "CFG Save: Save runtime setting to {0}".format(file))
-                                elif action==POED_LOAD_ACTION:
+                                elif action == POED_LOAD_ACTION:
                                     if file == None:
                                         pa.log.info(
                                             "CFG Load: Load persistent file")
-                                        result = pa.load_poe_cfg(pa.permanent_cfg)
+                                        result = pa.load_poe_cfg(
+                                            pa.permanent_cfg)
                                     else:
                                         pa.log.info(
                                             "CFG Load: Load cfg file from {0}".format(file))
-                                        temp_cfg = PoeConfig(file, pa.plat_name)
+                                        temp_cfg = PoeConfig(
+                                            file, pa.plat_name)
                                         result = pa.load_poe_cfg(temp_cfg)
                                     if result == True:
                                         pa.update_set_time()
-
-
                                 break
                         else:
                             pa.log.notice("Receive data: %s, skipped!" % data)
-
-
             except Exception as e:
                 pa.log.err("An exception to listen poe set event: %s, skipped."
                            % str(e))

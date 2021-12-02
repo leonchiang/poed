@@ -31,12 +31,13 @@ import collections
 import json
 import pathlib
 
-bootcmd_path   = "/proc/cmdline"
-pa_root_path   = os.getcwd() + "/../"
+bootcmd_path = "/proc/cmdline"
+pa_root_path = os.getcwd() + "/../"
 plat_root_path = pa_root_path + "platforms"
 
 PORTLIST_VALIDATION1 = "^([1-9]{0,1}[0-9]{1})-([1-9]{0,1}[0-9]{1})$"
 PORTLIST_VALIDATION2 = "^([1-9]{0,1}[0-9]{1})$"
+
 
 class PoeCLI(object):
     TIME_FMT = "%Y/%m/%d %H:%M:%S"
@@ -52,7 +53,8 @@ class PoeCLI(object):
                 d = dict(i.split('=') for i in f.read().split(' '))
                 return d.get("onl_platform").rstrip()
         except Exception as e:
-            print_stderr("Failed to get model name from %s. err: %s" % (bootcmd_path, str(e)))
+            print_stderr("Failed to get model name from %s. err: %s" %
+                         (bootcmd_path, str(e)))
             return "Unknown"
 
     def platform_src_path(self):
@@ -136,6 +138,8 @@ class PoeCLI(object):
                                 help="Show port, system, and individual masks Information")
         show_group.add_argument("-v", "--version", action="store_true",
                                 help="Show PoE versions\n")
+        show_group.add_argument("-x", "--status2", action="store_true",
+                                help="Show PoE System Status2")
 
         # Set Sub Command
         set_parser = root_sub_parser.add_parser("set", help="Set PoE ports",
@@ -157,12 +161,11 @@ class PoeCLI(object):
                                 "range: 0x0 (mW) - 0xffff (mW)\n"
                                 "This field will be ignored if val sets to 0xffff")
         # Save Sub Command
-        save_parser = root_sub_parser.add_parser("savechip", help=
-            "This command saves the current user values into the non-volatile memory and these user values"
-            "become the defaults after any reset. "
-            "To change the default back to the initial factory values, use the Restore Factory Defaults cmd."
-            "(poecli restore_poe_system). The persistent config won't change until 'poecli cfg --save' issued."
-        )
+        save_parser = root_sub_parser.add_parser("savechip", help="This command saves the current user values into the non-volatile memory and these user values"
+                                                 "become the defaults after any reset. "
+                                                 "To change the default back to the initial factory values, use the Restore Factory Defaults cmd."
+                                                 "(poecli restore_poe_system). The persistent config won't change until 'poecli cfg --save' issued."
+                                                 )
 
         # CFG Sub Command
         cfg_parser = root_sub_parser.add_parser("cfg", help="CFG command, to manipulate the poe agent config files.",
@@ -177,19 +180,30 @@ class PoeCLI(object):
                                 "instead of persistent config, Example:\n"
                                 "poecli cfg -s -c [Config Path]")
 
-        # Restore Sub Command
-        restore_parser = root_sub_parser.add_parser("restore_poe_system", help=
-                        "This command restores modified values to POE chip factory default values \n"
-                        "that are part of the firmware release version."
-                        "Ports will shut down after sending this command."
-                        "After restore factory default, it will initialize the port setting for the platform."
-                        "The persistent config won't change until 'poecli cfg --save' issued.\n"
-                        )
+        # CFG Sub Command
+        init_parser = root_sub_parser.add_parser("init_platform", help="Initialize platform command.",
+                                                 formatter_class=argparse.RawTextHelpFormatter)
+        # ReloadAll Sub Command
+        init_parser = root_sub_parser.add_parser("reload_all", help="reload all",
+                                                 formatter_class=argparse.RawTextHelpFormatter)
 
+        actmat_parser = root_sub_parser.add_parser("get_active_matrix", help="get_active_matrix",
+                                                   formatter_class=argparse.RawTextHelpFormatter)
+
+        # Restore Sub Command
+        restore_parser = root_sub_parser.add_parser("restore_poe_system", help="This command restores modified values to POE chip factory default values \n"
+                                                    "that are part of the firmware release version."
+                                                    "Ports will shut down after sending this command."
+                                                    "After restore factory default, it will initialize the port setting for the platform."
+                                                    "The persistent config won't change until 'poecli cfg --save' issued.\n"
+                                                    )
+
+        reset_parser = root_sub_parser.add_parser("resetchip", help="Reset command of poe chip",
+                                                  formatter_class=argparse.RawTextHelpFormatter)
         return root_parser
 
     def json_output(self, data):
-        print(json.dumps(data, indent = 4))
+        print(json.dumps(data, indent=4))
 
     def get_versions(self):
         data = collections.OrderedDict()
@@ -200,6 +214,9 @@ class PoeCLI(object):
 
     def get_system_running_state(self):
         return self.poe_plat.get_system_information()
+
+    def get_system_status2(self):
+        return self.poe_plat.get_system_2nd_status()
 
     def get_ports_running_state(self, portList):
         return self.poe_plat.get_ports_information(portList)
@@ -230,14 +247,18 @@ class PoeCLI(object):
             if debug:
                 output = "{:<4d}  {:17s}  {:7s}  {:^8s}  {:14s}  {:^5s}  {:6d} (mW)  {:6d} (mW)  {:5.1f} (V)  {:3d} (mA)  {:5s}  {:4d}".format(
                          info.get(PORT_ID), info.get(STATUS), info.get(ENDIS),
-                         info.get(PRIORITY), info.get(PROTOCOL), info.get(CLASS),
-                         info.get(POWER_CONSUMP), info.get(POWER_LIMIT), info.get(VOLTAGE),
+                         info.get(PRIORITY), info.get(
+                             PROTOCOL), info.get(CLASS),
+                         info.get(POWER_CONSUMP), info.get(
+                             POWER_LIMIT), info.get(VOLTAGE),
                          info.get(CURRENT), "0x{:02x}".format(info.get(LATCH)), info.get(EN_4PAIR))
             else:
                 output = "{:<4d}  {:17s}  {:7s}  {:^8s}  {:14s}  {:^5s}  {:6d} (mW)  {:6d} (mW)  {:5.1f} (V)  {:3d} (mA)".format(
                          info.get(PORT_ID), info.get(STATUS), info.get(ENDIS),
-                         info.get(PRIORITY), info.get(PROTOCOL), info.get(CLASS),
-                         info.get(POWER_CONSUMP), info.get(POWER_LIMIT), info.get(VOLTAGE),
+                         info.get(PRIORITY), info.get(
+                             PROTOCOL), info.get(CLASS),
+                         info.get(POWER_CONSUMP), info.get(
+                             POWER_LIMIT), info.get(VOLTAGE),
                          info.get(CURRENT))
             print(output)
         print("")
@@ -311,6 +332,12 @@ class PoeCLI(object):
                 "Failed to show poe system information! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
+    def show_system_status2(self, debug=True, json=True):
+        data = collections.OrderedDict()
+        data[SYSTEM_STATUS2] = self.get_system_status2()
+        self.json_output(data)
+
+    @PoeAccessExclusiveLock
     def show_ports_information(self, portList, debug, json):
         try:
             data = collections.OrderedDict()
@@ -320,8 +347,7 @@ class PoeCLI(object):
             else:
                 self.print_ports_information(data[PORT_INFO], debug)
         except Exception as e:
-            print_stderr(
-                "Failed to show poe ports information! (%s)" % str(e))
+            print_stderr("Failed to show poe ports information! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def show_individual_masks(self, json):
@@ -362,8 +388,7 @@ class PoeCLI(object):
                 poe_port.set_enDis(val)
             return True
         except Exception as e:
-            print_stderr(
-                "Failed to set ports enable/disable! (%s)" % str(e))
+            print_stderr("Failed to set ports enable/disable! (%s)" % str(e))
         return False
 
     @PoeAccessExclusiveLock
@@ -393,8 +418,7 @@ class PoeCLI(object):
         try:
             self.poe_plat.save_system_settings()
         except Exception as e:
-            print_stderr(
-                "Failed to save poe system settings! (%s)" % str(e))
+            print_stderr("Failed to save poe system settings! (%s)" % str(e))
 
     @PoeAccessExclusiveLock
     def restore_factory_default(self):
@@ -404,8 +428,26 @@ class PoeCLI(object):
             self.json_output(result)
             print("Success to restore factory default and take platform poe settings!")
         except Exception as e:
-            print_stderr(
-                "Failed to restore factory default! (%s)" % str(e))
+            print_stderr("Failed to restore factory default! (%s)" % str(e))
+
+    @PoeAccessExclusiveLock
+    def reset_poe_chip(self):
+        try:
+            data = collections.OrderedDict()
+            reset_status = self.poe_plat.reset_poe()
+            print("reset result: {0}".format(str(reset_status)))
+            # self.json_output(result)
+            time.sleep(1)
+            rx_msg = self.poe_plat._recv()
+            result = self.poe_plat.PoeMsgParser.parse(
+                rx_msg, self.poe_plat.PoeMsgParser.MSG_SYSTEM_STATUS)
+            print("Reset status: {0}".format(result))
+            # data[CMD_EXECUTE_RESULT] = self.poe_plat.init_poe()
+            # data[SYSTEM_STATUS2] = self.get_system_status2()
+            # self.json_output(data)
+            print("Success to reset poe chip and take platform poe settings!")
+        except Exception as e:
+            print_stderr("Failed to reset poe chip! (%s)" % str(e))
 
     def get_current_time(self):
         return datetime.now().strftime(self.TIME_FMT)
@@ -426,6 +468,7 @@ class PoeCLI(object):
         except Exception as e:
             pass
 
+
 def main(argv):
     try:
         poecli = PoeCLI()
@@ -438,7 +481,7 @@ def main(argv):
         os._exit(-8)
 
     parser = poecli._build_parser()
-    args=None
+    args = None
     try:
         args = parser.parse_args()
     except Exception as e:
@@ -448,13 +491,15 @@ def main(argv):
         set_flag = False
         poed_alive = poecli.is_poed_alive()
         if args.subcmd == "show":
-            if (args.ports is None and args.system is False and \
-                    args.all is False and args.mask is False and args.version is False):
-                parser.error("No action requested for %s command" % args.subcmd)
+            if (args.ports is None and args.system is False and
+                    args.all is False and args.mask is False and args.version is False and args.status2 is False):
+                parser.error("No action requested for %s command" %
+                             args.subcmd)
             debug_flag = args.debug
             json_flag = args.json
             if args.ports:
-                poecli.show_ports_information(args.ports, debug_flag, json_flag)
+                poecli.show_ports_information(
+                    args.ports, debug_flag, json_flag)
             elif args.system:
                 poecli.show_system_information(debug_flag, json_flag)
             elif args.mask:
@@ -467,27 +512,47 @@ def main(argv):
                 poecli.show_system_status2(json_flag)
         elif args.subcmd == "set":
             if (args.enable is None and args.level is None and args.powerLimit is None):
-                parser.error("No action requested for %s command" % args.subcmd)
+                parser.error("No action requested for %s command" %
+                             args.subcmd)
             if args.enable is not None:
                 set_flag |= poecli.set_ports_enDis(args.ports, args.enable)
             if args.level is not None:
                 set_flag |= poecli.set_ports_priority(args.ports, args.level)
             if args.powerLimit is not None:
-                set_flag |= poecli.set_ports_powerLimit(args.ports, args.powerLimit)
+                set_flag |= poecli.set_ports_powerLimit(
+                    args.ports, args.powerLimit)
 
         elif args.subcmd == "savechip":
             poecli.save_system_settings()
             set_flag = True
         elif args.subcmd == "restore_poe_system":
             poecli.restore_factory_default()
+        elif args.subcmd == "resetchip":
+            poecli.reset_poe_chip()
+            if poed_alive:
+                cfg_action += POECLI_CFG+","
+                cfg_action += POED_LOAD_ACTION+","
+                cfg_action = "".join(cfg_action.rsplit(",", 1))
+                print("reset_reload_action: {0}".format(cfg_action))
+        elif args.subcmd == "init_platform":
+            poecli.init_poe_plat()
+        elif args.subcmd == "get_active_matrix":
+            poecli.get_active_matrix()
+        elif args.subcmd == "reload_all":
+            poecli.init_poe_plat()
+            if poed_alive:
+                cfg_action += POECLI_CFG+","
+                cfg_action += POED_LOAD_ACTION+","
+                cfg_action = "".join(cfg_action.rsplit(",", 1))
+                print("reload_action: {0}".format(cfg_action))
         elif args.subcmd == "cfg":
             if poed_alive:
                 cfg_action += POECLI_CFG+","
-                if args.save:
+                if args.save == True:
                     cfg_action += POED_SAVE_ACTION+","
                     if args.config is not None:
                         cfg_action += args.config+","
-                elif args.load:
+                elif args.load == True:
                     cfg_action += POED_LOAD_ACTION+","
                     if args.config is not None:
                         cfg_action += args.config+","
@@ -498,9 +563,9 @@ def main(argv):
 
     if set_flag == True and poed_alive == True:
         poecli.send_ipc_event()
-    elif len(cfg_action)>0 and poed_alive == True:
+    elif len(cfg_action) > 0 and poed_alive == True:
         poecli.send_ipc_event(cfg_action)
+
 
 if __name__ == '__main__':
     main(sys.argv)
-
